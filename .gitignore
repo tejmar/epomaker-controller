@@ -1,0 +1,29 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Python caching
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# IDE files and OS metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# User config persistence
+.epomaker-controller/
+config.json
+
+# Scratch files & temporary logs
+/tmp/
+*.log
+*.pcapng
+*.pcap

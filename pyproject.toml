@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "epomaker-controller"
+version = "0.0.8"
+description = "A CLI and GUI controller for Epomaker keyboards (RT100, DynaTab 75X, etc.)"
+readme = "README.md"
+authors = [
+    { name = "strodgers" }
+]
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "click>=8.0.0",
+    "hidapi>=0.14.0",
+    "pillow>=10.0.0",
+    "psutil>=5.9.0",
+    "gpustat>=1.1.0",
+]
+requires-python = ">=3.8"
+
+[project.entry-points]
+console_scripts = { epomakercontroller = "epomakercontroller.__main__:cli" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["epomakercontroller*"]
+
+[tool.setuptools.package-data]
+epomakercontroller = ["configs/**/*", "py.typed"]
