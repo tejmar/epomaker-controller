@@ -14,6 +14,8 @@ This utility allows you to control key backlighting, customize the onboard 60x9 
 ## Key Features
 
 ### 🎨 1. Interactive LED Screen Designer (GUI)
+![LED Screen Designer GUI](assets/images/screen_designer.jpg)
+
 A full-featured pixel editor designed specifically for the DynaTab 75X's 60x9 dot-matrix screen:
 * **Interactive Grid:** Draw directly on the canvas with left-click, erase with right-click, or use the Eyedropper tool to pick colors.
 * **Animation Controller:** A multi-frame builder letting you copy, add, delete, and re-order frames (limited to a hardware-safe maximum of 15 frames to prevent flash memory allocation overflows).
@@ -24,6 +26,8 @@ A full-featured pixel editor designed specifically for the DynaTab 75X's 60x9 do
 * **Shift Pad Controls:** Shift the active frame in 4 directions (`Up/Down/Left/Right` with wrap-around) to create smooth scroll animations.
 
 ### ⌨️ 2. Visual Key Backlight Customizer (GUI)
+![Key Backlight Customizer GUI](assets/images/key_backlight.jpg)
+
 A dark mechanical-switch themed keyboard layout customizer to paint individual keys:
 * **Color Picker & Swatches:** Built-in RGB sliders and a 12-preset color swatch palette directly on-screen—no annoying popup dialogs.
 * **Multi-Mode Painting:**
