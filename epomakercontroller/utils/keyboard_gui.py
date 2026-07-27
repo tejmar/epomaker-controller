@@ -2,6 +2,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import os
+from .fonts import F, get_ui_font
 
 from .keyboard_keys import KeyboardKey, KeyboardKeys
 from ..commands.EpomakerKeyRGBCommand import KeyMap, KeyboardRGBFrame
@@ -121,7 +122,7 @@ class RGBKeyboardGUI:
                         fg="#eeeeee" if state == "normal" else "#555555",
                         activebackground="#444444",
                         activeforeground="#ffffff",
-                        font=("Outfit", 8, "bold"),
+                        font=F(8, "bold"),
                         relief=tk.RAISED,
                         bd=1,
                         highlightthickness=0
@@ -150,17 +151,17 @@ class RGBKeyboardGUI:
         controls_frame.pack(fill="x", side="bottom", padx=15, pady=(0, 15))
 
         # 1. Color Picker
-        cp_frame = tk.LabelFrame(controls_frame, text="Color Picker", bg="#2d2d2d", fg="#888888", font=("Outfit", 9, "bold"), padx=10, pady=5)
+        cp_frame = tk.LabelFrame(controls_frame, text="Color Picker", bg="#2d2d2d", fg="#888888", font=F(9, "bold"), padx=10, pady=5)
         cp_frame.pack(side="left", fill="both", expand=True, padx=5, pady=5)
         self.create_color_picker(cp_frame)
 
         # 2. Preset Panel
-        pr_frame = tk.LabelFrame(controls_frame, text="Presets", bg="#2d2d2d", fg="#888888", font=("Outfit", 9, "bold"), padx=10, pady=5)
+        pr_frame = tk.LabelFrame(controls_frame, text="Presets", bg="#2d2d2d", fg="#888888", font=F(9, "bold"), padx=10, pady=5)
         pr_frame.pack(side="left", fill="both", expand=True, padx=5, pady=5)
         self.create_preset_panel(pr_frame)
 
         # 3. Actions Panel
-        act_frame = tk.LabelFrame(controls_frame, text="Actions", bg="#2d2d2d", fg="#888888", font=("Outfit", 9, "bold"), padx=10, pady=5)
+        act_frame = tk.LabelFrame(controls_frame, text="Actions", bg="#2d2d2d", fg="#888888", font=F(9, "bold"), padx=10, pady=5)
         act_frame.pack(side="left", fill="both", expand=True, padx=5, pady=5)
         self.create_actions_panel(act_frame)
 
@@ -182,7 +183,7 @@ class RGBKeyboardGUI:
             btn = tk.Button(
                 swatch_frame, text=name, bg=hex_color if name != "Off" else "#1e1e1e",
                 fg="#ffffff" if name in ["Blue", "Purple", "Off"] else "#000000",
-                font=("Outfit", 8, "bold"), width=7, relief=tk.FLAT, bd=0,
+                font=F(8, "bold"), width=7, relief=tk.FLAT, bd=0,
                 command=lambda color=rgb: self.update_active_color(color)
             )
             btn.grid(row=r_idx, column=c_idx, padx=2, pady=2)
@@ -234,7 +235,7 @@ class RGBKeyboardGUI:
         dazzle_cb.grid(row=3, column=0, columnspan=2, sticky="w", pady=2)
 
         apply_btn = tk.Button(
-            parent, text="Apply Preset Effect", bg="#28a745", fg="#ffffff", font=("Outfit", 9, "bold"),
+            parent, text="Apply Preset Effect", bg="#28a745", fg="#ffffff", font=F(9, "bold"),
             relief=tk.FLAT, bd=0, command=self.apply_preset_effect
         )
         apply_btn.grid(row=4, column=0, columnspan=2, sticky="we", pady=5)
@@ -245,32 +246,32 @@ class RGBKeyboardGUI:
         paint_cb.pack(anchor="w", pady=2)
 
         select_all_btn = tk.Button(
-            parent, text="Select All Keys", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 9, "bold"),
+            parent, text="Select All Keys", bg="#3a3a3a", fg="#eeeeee", font=F(9, "bold"),
             relief=tk.FLAT, bd=0, command=self.select_all_keys
         )
         select_all_btn.pack(fill="x", pady=2)
 
         save_btn = tk.Button(
-            parent, text="Save Layout", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 9, "bold"),
+            parent, text="Save Layout", bg="#3a3a3a", fg="#eeeeee", font=F(9, "bold"),
             relief=tk.FLAT, bd=0, command=self.save_layout
         )
         save_btn.pack(fill="x", pady=2)
 
         load_btn = tk.Button(
-            parent, text="Load Layout", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 9, "bold"),
+            parent, text="Load Layout", bg="#3a3a3a", fg="#eeeeee", font=F(9, "bold"),
             relief=tk.FLAT, bd=0, command=self.load_layout
         )
         load_btn.pack(fill="x", pady=2)
 
         clear_btn = tk.Button(
-            parent, text="Clear All Keys", bg="#e94560", fg="#ffffff", font=("Outfit", 9, "bold"),
+            parent, text="Clear All Keys", bg="#e94560", fg="#ffffff", font=F(9, "bold"),
             relief=tk.FLAT, bd=0, command=self.clear_all_keys
         )
         clear_btn.pack(fill="x", pady=2)
 
         if self.switch_callback is not None:
             switch_btn = tk.Button(
-                parent, text="Switch to Screen Designer", bg="#4f46e5", fg="#ffffff", font=("Outfit", 9, "bold"),
+                parent, text="Switch to Screen Designer", bg="#4f46e5", fg="#ffffff", font=F(9, "bold"),
                 relief=tk.FLAT, bd=0, command=lambda: self.switch_callback(self.root)
             )
             switch_btn.pack(fill="x", pady=4)

@@ -3,6 +3,7 @@ from tkinter import colorchooser, filedialog, messagebox
 import time
 import os
 from PIL import Image, ImageTk
+from .fonts import F, get_ui_font
 
 from ..epomakercontroller import EpomakerController
 from ..configs.configs import load_main_config
@@ -42,7 +43,7 @@ class CropDialog(tk.Toplevel):
         tk.Label(
             self,
             text="Position mouse. Scroll wheel or use buttons to resize. Left-click to crop.",
-            font=("Outfit", 10), bg="#1e1e1e", fg="#eeeeee", pady=10
+            font=F(10), bg="#1e1e1e", fg="#eeeeee", pady=10
         ).pack()
         
         # Zoom controls
@@ -197,7 +198,7 @@ class ScreenDesignerApp:
         title_lbl = tk.Label(
             self.root,
             text="Epomaker DynaTab 75X LED Screen Designer",
-            font=("Outfit", 16, "bold"),
+            font=F(16, "bold"),
             bg="#1e1e1e",
             fg="#eeeeee",
             pady=10
@@ -213,38 +214,38 @@ class ScreenDesignerApp:
         left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
 
         # Mode label
-        tk.Label(left_frame, text="TOOLS", font=("Outfit", 9, "bold"), bg="#2d2d2d", fg="#888888").pack(pady=(10, 5))
+        tk.Label(left_frame, text="TOOLS", font=F(9, "bold"), bg="#2d2d2d", fg="#888888").pack(pady=(10, 5))
 
         # Tool buttons
         self.draw_btn = tk.Button(
-            left_frame, text="Draw", bg="#00adb5", fg="#ffffff", font=("Outfit", 9),
+            left_frame, text="Draw", bg="#00adb5", fg="#ffffff", font=F(9),
             activebackground="#00adb5", activeforeground="#ffffff", relief=tk.FLAT, bd=0, width=12,
             command=lambda: self.set_draw_mode("draw")
         )
         self.draw_btn.pack(pady=3, padx=10)
 
         self.erase_btn = tk.Button(
-            left_frame, text="Erase", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 9),
+            left_frame, text="Erase", bg="#3a3a3a", fg="#eeeeee", font=F(9),
             relief=tk.FLAT, bd=0, width=12,
             command=lambda: self.set_draw_mode("erase")
         )
         self.erase_btn.pack(pady=3, padx=10)
 
         self.dropper_btn = tk.Button(
-            left_frame, text="Picker", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 9),
+            left_frame, text="Picker", bg="#3a3a3a", fg="#eeeeee", font=F(9),
             relief=tk.FLAT, bd=0, width=12,
             command=lambda: self.set_draw_mode("eyedropper")
         )
         self.dropper_btn.pack(pady=3, padx=10)
 
         # Color Preview Indicator
-        tk.Label(left_frame, text="COLOR", font=("Outfit", 9, "bold"), bg="#2d2d2d", fg="#888888").pack(pady=(15, 5))
+        tk.Label(left_frame, text="COLOR", font=F(9, "bold"), bg="#2d2d2d", fg="#888888").pack(pady=(15, 5))
         self.color_preview = tk.Frame(left_frame, width=40, height=40, bg="#ff0000", bd=2, relief=tk.SOLID)
         self.color_preview.pack(pady=5)
         self.color_preview.pack_propagate(False)
 
         custom_color_btn = tk.Button(
-            left_frame, text="Custom...", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 8),
+            left_frame, text="Custom...", bg="#3a3a3a", fg="#eeeeee", font=F(8),
             relief=tk.FLAT, bd=0, width=12, command=self.choose_custom_color
         )
         custom_color_btn.pack(pady=5)
@@ -305,25 +306,25 @@ class ScreenDesignerApp:
         playback_sub.pack(fill=tk.X)
 
         self.play_btn = tk.Button(
-            playback_sub, text="Play Preview", bg="#28a745", fg="#ffffff", font=("Outfit", 9, "bold"),
+            playback_sub, text="Play Preview", bg="#28a745", fg="#ffffff", font=F(9, "bold"),
             relief=tk.FLAT, bd=0, padx=12, command=self.toggle_preview
         )
         self.play_btn.pack(side=tk.LEFT, padx=10)
 
         self.prev_btn = tk.Button(
-            playback_sub, text="Prev Frame", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 9),
+            playback_sub, text="Prev Frame", bg="#3a3a3a", fg="#eeeeee", font=F(9),
             relief=tk.FLAT, bd=0, command=self.prev_frame
         )
         self.prev_btn.pack(side=tk.LEFT, padx=5)
 
         self.frame_lbl = tk.Label(
-            playback_sub, text="Frame 1 of 1", font=("Outfit", 10, "bold"),
+            playback_sub, text="Frame 1 of 1", font=F(10, "bold"),
             bg="#2d2d2d", fg="#eeeeee", width=15
         )
         self.frame_lbl.pack(side=tk.LEFT, padx=5)
 
         self.next_btn = tk.Button(
-            playback_sub, text="Next Frame", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 9),
+            playback_sub, text="Next Frame", bg="#3a3a3a", fg="#eeeeee", font=F(9),
             relief=tk.FLAT, bd=0, command=self.next_frame
         )
         self.next_btn.pack(side=tk.LEFT, padx=5)
@@ -332,13 +333,13 @@ class ScreenDesignerApp:
         delay_sub = tk.Frame(controls_frame, bg="#2d2d2d", pady=10)
         delay_sub.pack(fill=tk.X)
         tk.Label(
-            delay_sub, text="Frame Delay (ms):", font=("Outfit", 9),
+            delay_sub, text="Frame Delay (ms):", font=F(9),
             bg="#2d2d2d", fg="#bbbbbb"
         ).pack(side=tk.LEFT, padx=(10, 5))
         
         self.delay_entry = tk.Entry(
             delay_sub, bg="#1e1e1e", fg="#eeeeee", insertbackground="#eeeeee",
-            font=("Outfit", 9), width=6, justify=tk.CENTER, bd=0
+            font=F(9), width=6, justify=tk.CENTER, bd=0
         )
         self.delay_entry.insert(0, str(self.delay_ms))
         self.delay_entry.pack(side=tk.LEFT, padx=5)
@@ -348,7 +349,7 @@ class ScreenDesignerApp:
         # 3. Image Adjustments Subframe (Sliders)
         adj_frame = tk.LabelFrame(
             center_frame, text="Image Adjustments", bg="#2d2d2d", fg="#888888",
-            font=("Outfit", 9, "bold"), padx=10, pady=5
+            font=F(9, "bold"), padx=10, pady=5
         )
         adj_frame.pack(fill=tk.X, pady=(10, 0))
 
@@ -378,7 +379,7 @@ class ScreenDesignerApp:
         self.sat_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
         reset_adj_btn = tk.Button(
-            adj_frame, text="Reset", bg="#e94560", fg="#ffffff", font=("Outfit", 8, "bold"),
+            adj_frame, text="Reset", bg="#e94560", fg="#ffffff", font=F(8, "bold"),
             relief=tk.FLAT, bd=0, padx=10, command=self.reset_sliders
         )
         reset_adj_btn.pack(side=tk.RIGHT, padx=5, pady=(15, 0))
@@ -388,51 +389,51 @@ class ScreenDesignerApp:
         right_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(10, 0))
 
         # Frame operations section
-        tk.Label(right_frame, text="FRAME EDITS", font=("Outfit", 9, "bold"), bg="#2d2d2d", fg="#888888").pack(pady=(10, 5))
+        tk.Label(right_frame, text="FRAME EDITS", font=F(9, "bold"), bg="#2d2d2d", fg="#888888").pack(pady=(10, 5))
 
-        tk.Button(right_frame, text="Add Blank", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 9),
+        tk.Button(right_frame, text="Add Blank", bg="#3a3a3a", fg="#eeeeee", font=F(9),
                   relief=tk.FLAT, bd=0, width=15, command=self.add_frame).pack(pady=3, padx=15)
         
-        tk.Button(right_frame, text="Duplicate", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 9),
+        tk.Button(right_frame, text="Duplicate", bg="#3a3a3a", fg="#eeeeee", font=F(9),
                   relief=tk.FLAT, bd=0, width=15, command=self.duplicate_frame).pack(pady=3, padx=15)
         
-        tk.Button(right_frame, text="Delete", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 9),
+        tk.Button(right_frame, text="Delete", bg="#3a3a3a", fg="#eeeeee", font=F(9),
                   relief=tk.FLAT, bd=0, width=15, command=self.delete_frame).pack(pady=3, padx=15)
         
-        tk.Button(right_frame, text="Clear Grid", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 9),
+        tk.Button(right_frame, text="Clear Grid", bg="#3a3a3a", fg="#eeeeee", font=F(9),
                   relief=tk.FLAT, bd=0, width=15, command=self.clear_frame).pack(pady=3, padx=15)
 
         # Shift operations
-        tk.Label(right_frame, text="SHIFT PATTERN", font=("Outfit", 9, "bold"), bg="#2d2d2d", fg="#888888").pack(pady=(15, 5))
+        tk.Label(right_frame, text="SHIFT PATTERN", font=F(9, "bold"), bg="#2d2d2d", fg="#888888").pack(pady=(15, 5))
         shift_pad = tk.Frame(right_frame, bg="#2d2d2d")
         shift_pad.pack(pady=5)
         
-        tk.Button(shift_pad, text="▲", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 8), relief=tk.FLAT, bd=0, width=3,
+        tk.Button(shift_pad, text="▲", bg="#3a3a3a", fg="#eeeeee", font=F(8), relief=tk.FLAT, bd=0, width=3,
                   command=lambda: self.shift_frame("up")).grid(row=0, column=1, pady=2)
-        tk.Button(shift_pad, text="◀", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 8), relief=tk.FLAT, bd=0, width=3,
+        tk.Button(shift_pad, text="◀", bg="#3a3a3a", fg="#eeeeee", font=F(8), relief=tk.FLAT, bd=0, width=3,
                   command=lambda: self.shift_frame("left")).grid(row=1, column=0, padx=2)
-        tk.Button(shift_pad, text="▶", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 8), relief=tk.FLAT, bd=0, width=3,
+        tk.Button(shift_pad, text="▶", bg="#3a3a3a", fg="#eeeeee", font=F(8), relief=tk.FLAT, bd=0, width=3,
                   command=lambda: self.shift_frame("right")).grid(row=1, column=2, padx=2)
-        tk.Button(shift_pad, text="▼", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 8), relief=tk.FLAT, bd=0, width=3,
+        tk.Button(shift_pad, text="▼", bg="#3a3a3a", fg="#eeeeee", font=F(8), relief=tk.FLAT, bd=0, width=3,
                   command=lambda: self.shift_frame("down")).grid(row=2, column=1, pady=2)
 
         # File Operations Section
-        tk.Label(right_frame, text="FILE ACTIONS", font=("Outfit", 9, "bold"), bg="#2d2d2d", fg="#888888").pack(pady=(15, 5))
+        tk.Label(right_frame, text="FILE ACTIONS", font=F(9, "bold"), bg="#2d2d2d", fg="#888888").pack(pady=(15, 5))
         
-        tk.Button(right_frame, text="Import GIF/Img", bg="#4f46e5", fg="#ffffff", font=("Outfit", 9),
+        tk.Button(right_frame, text="Import GIF/Img", bg="#4f46e5", fg="#ffffff", font=F(9),
                   relief=tk.FLAT, bd=0, width=15, command=self.import_file).pack(pady=3, padx=15)
         
-        tk.Button(right_frame, text="Export as GIF", bg="#3a3a3a", fg="#eeeeee", font=("Outfit", 9),
+        tk.Button(right_frame, text="Export as GIF", bg="#3a3a3a", fg="#eeeeee", font=F(9),
                   relief=tk.FLAT, bd=0, width=15, command=self.export_gif).pack(pady=3, padx=15)
 
         # Device Operations Section
-        tk.Label(right_frame, text="HARDWARE", font=("Outfit", 9, "bold"), bg="#2d2d2d", fg="#888888").pack(pady=(15, 5))
+        tk.Label(right_frame, text="HARDWARE", font=F(9, "bold"), bg="#2d2d2d", fg="#888888").pack(pady=(15, 5))
         
-        tk.Button(right_frame, text="Send to Screen", bg="#e94560", fg="#ffffff", font=("Outfit", 10, "bold"),
+        tk.Button(right_frame, text="Send to Screen", bg="#e94560", fg="#ffffff", font=F(10, "bold"),
                   relief=tk.FLAT, bd=0, width=15, pady=5, command=self.upload_to_device).pack(pady=5, padx=15)
 
         if self.switch_callback is not None:
-            tk.Button(right_frame, text="Switch to Keys", bg="#4f46e5", fg="#ffffff", font=("Outfit", 10, "bold"),
+            tk.Button(right_frame, text="Switch to Keys", bg="#4f46e5", fg="#ffffff", font=F(10, "bold"),
                       relief=tk.FLAT, bd=0, width=15, pady=5, command=lambda: self.switch_callback(self.root)).pack(pady=5, padx=15)
 
     # Frame and Coordinate helpers (Column-major layout)
@@ -799,7 +800,7 @@ class ScreenDesignerApp:
         # Show status warning
         status_lbl = tk.Label(
             self.root, text="Uploading... Keyboard will be unresponsive.",
-            font=("Outfit", 10, "bold"), bg="#e94560", fg="#ffffff", pady=5
+            font=F(10, "bold"), bg="#e94560", fg="#ffffff", pady=5
         )
         status_lbl.pack(fill=tk.X, before=self.canvas)
         self.root.update()
