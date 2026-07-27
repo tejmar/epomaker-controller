@@ -16,7 +16,7 @@ Use the **Keyboard Model Support** issue template. USB packet captures from Wire
 ### Setting Up for Development
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/epomaker-controller.git
+git clone https://github.com/tejmar/epomaker-controller.git
 cd epomaker-controller
 python3 -m venv .venv
 source .venv/bin/activate
