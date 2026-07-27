@@ -47,7 +47,17 @@ epomakercontroller/
 2. Add a new keymap JSON file to `epomakercontroller/configs/keymaps/`.
 3. Add a new layout JSON file to `epomakercontroller/configs/layouts/`.
 4. Register the model VID/PID in `epomakercontroller/configs/configs.py`.
-5. Test the protocol against the hardware and submit a PR.
+5. Set `CAPABILITIES` in `~/.epomaker-controller/config.json` (or `DEFAULT_MAIN_CONFIG`) to the features this model supports:
+   - `per_key_rgb` — per-key RGB / key customizer
+   - `rt100_screen` — RT100-style 162×173 image upload
+   - `dynatab_screen` — DynaTab 60×9 animation / screen designer
+   Example for DynaTab 75X:
+   ```json
+   "CONF_LAYOUT_PATH": "EpomakerDynaTab75X.json",
+   "CONF_KEYMAP_PATH": "EpomakerDynaTab75X.json",
+   "CAPABILITIES": ["per_key_rgb", "dynatab_screen"]
+   ```
+6. Test the protocol against the hardware and submit a PR.
 
 ### Pull Request Guidelines
 

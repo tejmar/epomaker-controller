@@ -7,6 +7,7 @@ to include additional data handling functionality.
 import dataclasses
 from typing import Optional
 
+from ...exceptions import ProtocolError
 from .Report import Report
 
 
@@ -59,10 +60,10 @@ class ReportWithData(Report):
         Args:
             data (bytes): The data to add.
         """
-        assert not self.prepared, "Report data has already been set."
-        assert (
-            self.report_bytearray is not None
-        ), "Report bytearray must be set before adding data."
+        if self.prepared:
+            raise ProtocolError("Report data has already been set.")
+        if self.report_bytearray is None:
+            raise ProtocolError("Report bytearray must be set before adding data.")
         self.report_data = bytearray(data)
         self.report_bytearray += self.report_data
         self._pad()

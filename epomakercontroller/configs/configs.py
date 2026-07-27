@@ -5,10 +5,9 @@ import os
 from pathlib import Path
 from typing import Any
 
-import epomakercontroller.configs.configs
-import epomakercontroller.configs.layouts
-import epomakercontroller.configs.keymaps
-import importlib.resources as pkg_resources
+from importlib.resources import files
+
+from ..exceptions import ConfigError
 
 
 class ConfigType(Enum):
@@ -26,6 +25,8 @@ DEFAULT_MAIN_CONFIG = {
     # The file will be looked for in the install location first, otherwise use a full filepath
     "CONF_LAYOUT_PATH": "EpomakerRT100-UK-ISO.json",
     "CONF_KEYMAP_PATH": "EpomakerRT100.json",
+    # Model feature flags: per_key_rgb, rt100_screen, dynatab_screen
+    "CAPABILITIES": ["per_key_rgb", "rt100_screen"],
 }
 
 
@@ -42,7 +43,8 @@ class Config:
                 self.data = json.load(f)
                 return
 
-        assert self.data is not None, "ERROR: Config has no data"
+        if self.data is None:
+            raise ConfigError("Config has no data")
 
     @staticmethod
     def _find_config_path(filename: str, type: ConfigType) -> str:
@@ -50,25 +52,21 @@ class Config:
         if os.path.exists(filename):
             return os.path.realpath(filename)
 
-        # Otherwise check for installed files
+        # Otherwise resolve the file from the installed package data.
+        # importlib.resources.files() is the 3.9+ replacement for the
+        # deprecated/removed importlib.resources.path().
         if type == ConfigType.CONF_LAYOUT:
-            with pkg_resources.path(
-                epomakercontroller.configs.layouts, filename
-            ) as path:
-                return str(path)
-        elif type == ConfigType.CONF_KEYMAP:
-            with pkg_resources.path(
-                epomakercontroller.configs.keymaps, filename
-            ) as path:
-                return str(path)
+            return str(files("epomakercontroller.configs.layouts").joinpath(filename))
+        if type == ConfigType.CONF_KEYMAP:
+            return str(files("epomakercontroller.configs.keymaps").joinpath(filename))
 
-        raise AttributeError(f"Unsupported ConfigType: {type.name}")
+        raise ConfigError(f"Unsupported ConfigType: {type.name}")
 
     def __getitem__(self, key: str) -> Any:
-        assert self.data is not None, "ERROR: Config has no data"
+        if self.data is None:
+            raise ConfigError("Config has no data")
         if key not in self.data:
-            print(f"Key {key} not found in {self.type.name}")
-            return None
+            raise ConfigError(f"Key {key!r} not found in {self.type.name}")
         return self.data[key]
 
 
@@ -107,22 +105,37 @@ def setup_main_config() -> Path:
     return config_file
 
 
+def _migrate_dynatab_capabilities(data: dict[Any, Any]) -> None:
+    """Upgrade older configs that set DynaTab layout without CAPABILITIES."""
+    layout = str(data.get("CONF_LAYOUT_PATH", ""))
+    caps = list(data.get("CAPABILITIES", DEFAULT_MAIN_CONFIG["CAPABILITIES"]))
+    if "DynaTab" in layout and "dynatab_screen" not in caps:
+        caps = [c for c in caps if c != "rt100_screen"]
+        if "per_key_rgb" not in caps:
+            caps.insert(0, "per_key_rgb")
+        caps.append("dynatab_screen")
+        data["CAPABILITIES"] = caps
+
+
 def verify_main_config(in_config: Config) -> Config:
-    assert (
-        in_config.type == ConfigType.CONF_MAIN
-    ), "ERROR: verify_main_config only for Configs of type CONF_MAIN"
-    assert in_config.data is not None, "ERROR: Config has no data"
+    if in_config.type != ConfigType.CONF_MAIN:
+        raise ConfigError("verify_main_config only for Configs of type CONF_MAIN")
+    if in_config.data is None:
+        raise ConfigError("Config has no data")
 
     # Ensure no unsupported entries are present
     extra_keys = set(in_config.data.keys()) - set(DEFAULT_MAIN_CONFIG.keys())
     if extra_keys:
-        raise ValueError(f"ERROR: Unsupported config entries found: {extra_keys}")
+        raise ConfigError(f"Unsupported config entries found: {extra_keys}")
 
     # Merge the default values with the provided config, ensuring no missing keys
+    merged = {**DEFAULT_MAIN_CONFIG, **in_config.data}
+    _migrate_dynatab_capabilities(merged)
+
     out_config = Config(
         type=in_config.type,
         filename=in_config.filename,
-        data={**DEFAULT_MAIN_CONFIG, **in_config.data},
+        data=merged,
     )
 
     # Write config back
@@ -142,7 +155,8 @@ def load_main_config() -> Config:
 def get_all_configs() -> dict[ConfigType, Config]:
     # First load the main config file
     main_config = load_main_config()
-    assert main_config.data is not None, "ERROR: Config has no data"
+    if main_config.data is None:
+        raise ConfigError("Config has no data")
 
     # Use keyboard and layout configs as per main config
     conf_layout_path = main_config.data["CONF_LAYOUT_PATH"]

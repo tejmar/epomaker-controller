@@ -20,7 +20,13 @@ class EpomakerRemapKeysCommand(EpomakerCommand):
     """
 
     def __init__(self, key_index: int, key_combo: int) -> None:
-        check_sum = 0xFF - (0x13 + key_index)
+        if not 0 <= key_index <= 0xFF:
+            raise ValueError(f"key_index must be a single byte (0-255), got {key_index}")
+        if not 0 <= key_combo <= 0xFF:
+            raise ValueError(f"key_combo must be a single byte (0-255), got {key_combo}")
+        # Mask to a byte: 0x13 + key_index can exceed 0xFF, which would make
+        # the subtraction negative and embed a "-" into the hex format string.
+        check_sum = (0xFF - (0x13 + key_index)) & 0xFF
         initialization_data = (
             f"1300{key_index:02x}00000000{check_sum:02x}0000{key_combo:02x}"
         )

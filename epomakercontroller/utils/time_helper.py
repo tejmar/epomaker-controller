@@ -2,23 +2,33 @@ import time
 
 
 class TimeHelper:
-    """
-    A helper class to ensure a minimum amount of time has passed between its creation and deletion.
+    """Enforce a minimum elapsed time, deterministically.
 
-    This class starts a timer when it is initialized. When it is deleted, it calculates the total
-    elapsed time and enforces a delay to ensure that the specified minimum time has passed.
+    Use as a context manager around the work to be paced::
 
-    Args:
-        min_duration (float): The minimum total duration (in seconds) that should pass between the
-                              creation and deletion of the instance.
+        with TimeHelper(1.6):
+            do_paced_work()
+
+    On a clean exit it sleeps for whatever remains of ``min_duration``. This
+    replaces the previous ``__del__``-based timing, which depended on
+    non-deterministic garbage collection for correctness.
     """
+
     def __init__(self, min_duration: float) -> None:
         self.min_duration = min_duration
         self.start_time = time.time()
 
-    def __del__(self) -> None:
-        elapsed_time = time.time() - self.start_time
-        remaining_time = self.min_duration - elapsed_time
-        # Ensure we do not sleep for a negative amount of time
-        if remaining_time > 0:
-            time.sleep(remaining_time)
+    def wait(self) -> None:
+        """Sleep for whatever remains of the minimum duration."""
+        remaining = self.min_duration - (time.time() - self.start_time)
+        if remaining > 0:
+            time.sleep(remaining)
+
+    def __enter__(self) -> "TimeHelper":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        # Only enforce the minimum duration on a clean exit; if an exception
+        # (e.g. KeyboardInterrupt) is propagating, don't delay it.
+        if exc_type is None:
+            self.wait()

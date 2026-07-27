@@ -31,8 +31,23 @@ from .commands import (
     EpomakerKeyRGBCommand,
     EpomakerProfileCommand,
 )
-from .commands.data.constants import BUFF_LENGTH, Profile
+from .commands.data.constants import (
+    BUFF_LENGTH,
+    CAPABILITY_DYNATAB_SCREEN,
+    CAPABILITY_RT100_SCREEN,
+    ERASE_DELAY_S,
+    PACKET_DELAY_S,
+    Profile,
+    SCREEN_FLASH_WAIT_S,
+)
+from .commands.EpomakerDynaTabScreenCommand import EpomakerDynaTabScreenCommand
 from .configs.configs import Config, ConfigType
+from .exceptions import (
+    CommandNotPreparedError,
+    DeviceCommunicationError,
+    DeviceNotOpenError,
+    ProtocolError,
+)
 
 
 class EpomakerController:
@@ -60,7 +75,7 @@ class EpomakerController:
         """Initializes the EpomakerController object.
 
         Args:
-            vendor_id (int): The vendor ID of the USB HID device.
+            config_main (Config): Main configuration (VID/PID, layout, capabilities).
             dry_run (bool): Whether to run in dry run mode (default: False).
         """
 
@@ -79,8 +94,12 @@ class EpomakerController:
             else config_main["PRODUCT_IDS_24G"]
         )
         self.device_description = config_main["DEVICE_DESCRIPTION_REGEX"]
+        caps = config_main["CAPABILITIES"] or []
+        self.capabilities: set[str] = set(caps)
         self.device = hid.device()
-        self.lock = threading.Lock()
+        # RLock so the signal handler (same thread) can close the device even if
+        # a send is interrupted mid-flight; cross-thread exclusion is preserved.
+        self.lock = threading.RLock()
         self.dry_run = dry_run
         self.device_list: list[dict[str, Any]] = []
         print(
@@ -92,15 +111,24 @@ class EpomakerController:
         # Set up signal handling
         self._setup_signal_handling()
 
+    def has_capability(self, name: str) -> bool:
+        """Return True if this model advertises the given capability flag."""
+        return name in self.capabilities
+
     def _setup_signal_handling(self) -> None:
         """Sets up signal handling to close the HID device on termination."""
         signal.signal(signal.SIGINT, self._signal_handler)  # Handle Ctrl+C
         signal.signal(signal.SIGTERM, self._signal_handler)  # Handle termination
 
     def _signal_handler(self, sig: int, frame: Optional[FrameType]) -> None:
-        """Handles signals to ensure the HID device is closed."""
+        """Handles signals: close the HID device, then unwind via KeyboardInterrupt.
+
+        Raising (instead of ``os._exit``) lets the normal try/except/finally flow
+        run, so the daemon's ``except KeyboardInterrupt`` path and any ``finally``
+        cleanup execute cleanly.
+        """
         self.close_device()
-        os._exit(0)  # Exit immediately after closing the device
+        raise KeyboardInterrupt
 
     def __del__(self) -> None:
         """Destructor to ensure the device is closed."""
@@ -124,7 +152,9 @@ class EpomakerController:
 
         product_id = self._find_product_id()
         if not product_id:
-            raise ValueError("No Epomaker RT100 devices found")
+            raise DeviceNotOpenError(
+                "No matching Epomaker/Royuan HID device found"
+            )
 
         if only_info:
             self._print_device_info()
@@ -134,7 +164,7 @@ class EpomakerController:
         # This way we don't block usage of the keyboard whilst the device is open
         device_path = self._find_device_path()
         if device_path is None:
-            raise ValueError("No device found")
+            raise DeviceNotOpenError("No device found")
         self._open_device(device_path)
 
         return self.device is not None
@@ -157,57 +187,52 @@ class EpomakerController:
         Args:
             device_path (bytes): The path to the device.
         """
-        try:
-            self.device = hid.device()
-            self.device.open_path(device_path)
-        except IOError as e:
-            print(
-                f"Failed to open device: {e}\n"
-                "Please make sure the device is connected\n"
-                "and you have the necessary permissions.\n\n"
-                "You may need to run this program as root or with sudo, or\n"
-                "set up a udev rule to allow access to the device.\n\n"
-            )
-            self.device = None
+        with self.lock:
+            try:
+                self.device = hid.device()
+                self.device.open_path(device_path)
+            except IOError as e:
+                self.device = None
+                raise DeviceNotOpenError(
+                    f"Failed to open device: {e}\n"
+                    "Please make sure the device is connected\n"
+                    "and you have the necessary permissions.\n\n"
+                    "You may need to run this program as root or with sudo, or\n"
+                    "set up a udev rule to allow access to the device.\n\n"
+                ) from e
 
-        assert self.device is not None
+            if self.device is None:
+                raise DeviceNotOpenError("Failed to open HID device")
 
     def generate_udev_rule(self) -> None:
         """Generates a udev rule for the connected keyboard."""
         rule_content = (
-            f"# Epomaker RT100 keyboard\n"
+            f"# Epomaker keyboard (VID {self.vendor_id:04x})\n"
             f'SUBSYSTEM=="usb", ATTRS{{idVendor}}=="{self.vendor_id:04x}", '
-            f'ATTRS{{idProduct}}=="{self._find_product_id():04x}", MODE="0666", '
-            'GROUP="plugdev"\n\n'
+            f'ATTRS{{idProduct}}=="{self._find_product_id():04x}", '
+            'MODE="0660", TAG+="uaccess"\n'
         )
 
-        rule_file_path = "/etc/udev/rules.d/99-epomaker-rt100.rules"
+        rule_file_path = "/etc/udev/rules.d/99-epomaker-keyboard.rules"
 
-        print("Generating udev rule for Epomaker RT100 keyboard")
+        print("Generating udev rule for Epomaker keyboard")
         print(f"Rule content:\n{rule_content}")
         print(f"Rule file path: {rule_file_path}")
         print("Please enter your password if prompted")
 
-        # Write the rule to a temporary file
-        temp_file_path = "/tmp/99-epomaker-rt100.rules"
-        with open(temp_file_path, "w", encoding="utf-8") as temp_file:
-            temp_file.write(rule_content)
+        sudo = ["sudo"] if os.geteuid() != 0 else []
 
-        # Move the file to the correct location, reload rules
-
-        move_command = ["mv", temp_file_path, rule_file_path]
-        reload_command = ["udevadm", "control", "--reload-rules"]
-        trigger_command = ["udevadm", "trigger"]
-
-        if os.geteuid() != 0:
-            # Use sudo if not root
-            move_command = ["sudo"] + move_command
-            reload_command = ["sudo"] + reload_command
-            trigger_command = ["sudo"] + trigger_command
-
-        subprocess.run(move_command, check=True)
-        subprocess.run(reload_command, check=True)
-        subprocess.run(trigger_command, check=True)
+        # Pipe the rule straight into place as root. This avoids the previous
+        # predictable /tmp file, which was a symlink/TOCTOU attack surface for
+        # the privileged install.
+        subprocess.run(
+            sudo + ["tee", rule_file_path],
+            input=rule_content.encode("utf-8"),
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+        subprocess.run(sudo + ["udevadm", "control", "--reload-rules"], check=True)
+        subprocess.run(sudo + ["udevadm", "trigger"], check=True)
 
         print("Rule generated successfully")
 
@@ -313,27 +338,48 @@ class EpomakerController:
             else None
         )
 
-    def _send_command(self, command: EpomakerCommand.EpomakerCommand) -> None:
-        """Sends a command to the HID device.
+    def _send_command(
+        self,
+        command: EpomakerCommand.EpomakerCommand,
+        *,
+        erase_delay_s: float | None = None,
+        packet_delay_s: float | None = None,
+    ) -> None:
+        """Sends a command to the HID device, optionally pacing packets.
 
         Args:
-            command (EpomakerCommand): The command to send.
+            command: The command to send.
+            erase_delay_s: Sleep after the first (init) report for SRAM erase.
+            packet_delay_s: Sleep after each subsequent data report.
         """
-        # Make sure device is opened and connected
-        assert self.device, "Device is not set!"
-        try:
-            self.device.get_product_string()
-        except:  # noqa: E722
-            raise IOError("Could not communicate with device")
+        if not command.report_data_prepared:
+            raise CommandNotPreparedError("Report data not prepared")
 
-        assert command.report_data_prepared, "Report data not prepared"
+        if not self.dry_run:
+            if not self.device:
+                raise DeviceNotOpenError("Device is not set!")
+            try:
+                self.device.get_product_string()
+            except Exception as e:
+                raise DeviceCommunicationError(
+                    "Could not communicate with device"
+                ) from e
+
         with self.lock:
-            for packet in command:
-                assert len(packet) == BUFF_LENGTH
+            reports = list(command)
+            for i, packet in enumerate(reports):
+                if len(packet) != BUFF_LENGTH:
+                    raise ProtocolError(
+                        f"Report length {len(packet)} != {BUFF_LENGTH}"
+                    )
                 if self.dry_run:
                     print(f"Dry run: skipping command send: {packet!r}")
                 else:
                     self.device.send_feature_report(packet.get_all_bytes())
+                if i == 0 and erase_delay_s:
+                    time.sleep(erase_delay_s)
+                elif i > 0 and packet_delay_s:
+                    time.sleep(packet_delay_s)
 
     def send_raw_report(self, data: bytes) -> None:
         """Sends a raw feature report to the HID device in a thread-safe manner."""
@@ -356,6 +402,102 @@ class EpomakerController:
             r = range(0, 100)  # 0 to 99
         return value in r
 
+    def _find_interface_path(self, interface_number: int) -> bytes | None:
+        """Return the HID path for a given interface number, if present."""
+        for device_info in hid.enumerate(self.vendor_id):
+            if (
+                device_info["product_id"] in self.product_ids
+                and device_info["interface_number"] == interface_number
+            ):
+                return device_info["path"]
+        return None
+
+    def _upload_dynatab_command(
+        self, screen_command: EpomakerDynaTabScreenCommand
+    ) -> None:
+        """Upload a prepared DynaTab screen command via interfaces 2 then 0."""
+        if self.dry_run:
+            print(
+                f"Dry run: skipping DynaTab screen upload "
+                f"({len(list(screen_command))} reports)"
+            )
+            return
+
+        # 1. Open Interface 2 and send the screen command packets
+        dev2_path = self._find_interface_path(2)
+        if not dev2_path:
+            raise DeviceNotOpenError("Interface 2 not found for screen upload.")
+
+        dev2 = None
+        upload_ok = False
+        try:
+            dev2 = hid.device()
+            dev2.open_path(dev2_path)
+            reports_list = list(screen_command)
+            if reports_list:
+                # Init report (0xa9) then wait for flash memory erase/init
+                dev2.send_feature_report(
+                    b"\x00" + reports_list[0].get_all_bytes()
+                )
+                time.sleep(ERASE_DELAY_S)
+
+                # Data reports (0x29) with packet pacing
+                for packet in reports_list[1:]:
+                    dev2.send_feature_report(b"\x00" + packet.get_all_bytes())
+                    time.sleep(PACKET_DELAY_S)
+            upload_ok = True
+        except Exception as e:
+            raise DeviceCommunicationError(
+                f"Failed to upload screen design on Interface 2: {e}"
+            ) from e
+        finally:
+            if dev2 is not None:
+                dev2.close()
+
+        if upload_ok:
+            print(
+                "Animation uploaded on Interface 2. Waiting "
+                f"{SCREEN_FLASH_WAIT_S:g} seconds for the keyboard to write to "
+                "flash and reboot..."
+            )
+            time.sleep(SCREEN_FLASH_WAIT_S)
+
+        # 2. Open Interface 0 to apply/activate (re-enumerate after reboot)
+        dev0_path = self._find_interface_path(0)
+        if not dev0_path:
+            raise DeviceNotOpenError(
+                "Interface 0 not found after screen upload (keyboard may still "
+                "be rebooting)."
+            )
+        dev0 = None
+        try:
+            dev0 = hid.device()
+            dev0.open_path(dev0_path)
+            dev0.write(b"\x00\x00")
+            time.sleep(0.3)
+            dev0.write(b"\x00\x01")
+        except Exception as e:
+            raise DeviceCommunicationError(
+                f"Failed to apply screen design on Interface 0: {e}"
+            ) from e
+        finally:
+            if dev0 is not None:
+                dev0.close()
+
+    def send_dynatab_frames(
+        self,
+        frames_rgb: list[list[tuple[int, int, int]]],
+        delay_ms: int = 100,
+    ) -> None:
+        """Send pixel frames directly to the DynaTab 75X screen (no image file).
+
+        Args:
+            frames_rgb: Column-major RGB frames (60×9 = 540 pixels each).
+            delay_ms: Animation frame delay in milliseconds.
+        """
+        screen_command = EpomakerDynaTabScreenCommand(frames_rgb, delay_ms)
+        self._upload_dynatab_command(screen_command)
+
     def send_dynatab_screen(self, image_path: str, delay_ms: int = 100) -> None:
         """Sends an image or GIF to the DynaTab 75X screen.
 
@@ -363,59 +505,10 @@ class EpomakerController:
             image_path (str): The path to the image/GIF file.
             delay_ms (int): The animation frame delay in milliseconds (default: 100).
         """
-        from .commands.EpomakerDynaTabScreenCommand import EpomakerDynaTabScreenCommand
-        screen_command = EpomakerDynaTabScreenCommand.from_image(image_path, delay_ms)
-
-        import hid
-        import time
-
-        # 1. Open Interface 2 and send the screen command packets
-        dev2_path = None
-        for device_info in hid.enumerate(self.vendor_id):
-            if device_info["product_id"] in self.product_ids:
-                if device_info["interface_number"] == 2:
-                    dev2_path = device_info["path"]
-                    break
-        if dev2_path:
-            try:
-                dev2 = hid.device()
-                dev2.open_path(dev2_path)
-                reports_list = list(screen_command)
-                if reports_list:
-                    # Send initialization report (0xa9) and wait for flash memory erase/init
-                    dev2.send_feature_report(b'\x00' + reports_list[0].get_all_bytes())
-                    time.sleep(0.25)
-                    
-                    # Send data reports (0x29) with a 10ms delay between reports to avoid buffer overflows
-                    for packet in reports_list[1:]:
-                        dev2.send_feature_report(b'\x00' + packet.get_all_bytes())
-                        time.sleep(0.010)
-                dev2.close()
-                print("Animation uploaded on Interface 2. Waiting 12 seconds for the keyboard to write to flash and reboot...")
-                time.sleep(12)
-            except Exception as e:
-                print(f"Warning: Failed to upload screen design on Interface 2: {e}")
-        else:
-            print("Warning: Interface 2 not found.")
-
-        # 2. Open Interface 0 to apply/activate the uploaded screen design
-        # Re-enumerate hid devices because the keyboard has disconnected and reconnected
-        dev0_path = None
-        for device_info in hid.enumerate(self.vendor_id):
-            if device_info["product_id"] in self.product_ids:
-                if device_info["interface_number"] == 0:
-                    dev0_path = device_info["path"]
-                    break
-        if dev0_path:
-            try:
-                dev0 = hid.device()
-                dev0.open_path(dev0_path)
-                dev0.write(b'\x00\x00')
-                time.sleep(0.3)
-                dev0.write(b'\x00\x01')
-                dev0.close()
-            except Exception as e:
-                print(f"Warning: Failed to apply screen design on Interface 0: {e}")
+        screen_command = EpomakerDynaTabScreenCommand.from_image(
+            image_path, delay_ms
+        )
+        self._upload_dynatab_command(screen_command)
 
     def send_image(self, image_path: str, delay_ms: int = 100) -> None:
         """Sends an image or GIF to the HID device.
@@ -424,7 +517,7 @@ class EpomakerController:
             image_path (str): The path to the image file.
             delay_ms (int): The animation frame delay in milliseconds (default: 100).
         """
-        if "DynaTab" in self.config_layout.filename:
+        if self.has_capability(CAPABILITY_DYNATAB_SCREEN):
             was_open = self.device is not None
             if was_open:
                 self.close_device()
@@ -434,6 +527,12 @@ class EpomakerController:
             if was_open:
                 self.open_device()
             return
+
+        if not self.has_capability(CAPABILITY_RT100_SCREEN):
+            raise ProtocolError(
+                "No screen upload capability for this model "
+                f"(capabilities={sorted(self.capabilities)})"
+            )
 
         image_command = EpomakerImageCommand.EpomakerImageCommand()
         image_command.encode_image(image_path)
@@ -460,11 +559,11 @@ class EpomakerController:
         Raises:
             ValueError: If the temperature is not in the range 0-99.
         """
-        if not temperature:
-            # Don't do anything if temperature is None
+        if temperature is None:
+            # Don't send anything if no temperature was provided (0 °C is valid)
             return
         if not self._assert_range(temperature):
-            raise ValueError("Temperature must be in range 0-99: ", temperature)
+            raise ValueError(f"Temperature must be in range 0-99: {temperature}")
         temperature_command = EpomakerTempCommand.EpomakerTempCommand(temperature)
         print(f"Sending temperature {temperature}C")
         self._send_command(temperature_command)
@@ -480,7 +579,7 @@ class EpomakerController:
             ValueError: If the CPU percentage is not in the range 0-100 and
                 from_daemon is False.
         """
-        if not self._assert_range(cpu):
+        if not self._assert_range(cpu, range(0, 101)):
             raise ValueError("CPU percentage must be in range 0-100")
         cpu_command = EpomakerCpuCommand.EpomakerCpuCommand(cpu)
         print(f"Sending CPU {cpu}%")
@@ -488,8 +587,9 @@ class EpomakerController:
 
     def set_rgb_all_keys(self, r: int, g: int, b: int) -> None:
         # Make sure values are within range
-        for value in [r, g, b]:
-            self._assert_range(value, range(0, 256))
+        for value in (r, g, b):
+            if not self._assert_range(value, range(0, 256)):
+                raise ValueError(f"RGB value {value} out of range 0-255")
 
         # Get all the keyboard keys
         keyboard_keys = KeyboardKeys(self.config_keymap)
@@ -505,13 +605,17 @@ class EpomakerController:
         self.send_keys(frames)
 
     def send_keys(self, frames: list[EpomakerKeyRGBCommand.KeyboardRGBFrame]) -> None:
-        """Sends key RGB frames to the HID device.
+        """Sends key RGB frames to the HID device with hardware-safe pacing.
 
         Args:
             frames (list): The list of KeyboardRGBFrame to send.
         """
         rgb_command = EpomakerKeyRGBCommand.EpomakerKeyRGBCommand(frames)
-        self._send_command(rgb_command)
+        self._send_command(
+            rgb_command,
+            erase_delay_s=ERASE_DELAY_S,
+            packet_delay_s=PACKET_DELAY_S,
+        )
 
     def remap_keys(self, key_index: int, key_combo: int) -> None:
         key_map_command = EpomakerRemapKeysCommand.EpomakerRemapKeysCommand(
@@ -534,7 +638,6 @@ class EpomakerController:
                 f"[{counter + 1}/{len(Profile.Mode)}] Cycled to light mode: {mode.name}"
             )
             time.sleep(sleep_seconds)
-            counter += 1
 
     def set_profile(self, profile: Profile) -> None:
         """Set the keyboard profile."""
@@ -552,22 +655,21 @@ class EpomakerController:
         self.send_time()
 
         while True:
-            # Send CPU usage
-            th_cpu = TimeHelper(min_duration=1.6)
-            self.send_cpu(get_cpu_usage(test_mode))
-            del th_cpu
+            # Send CPU usage, paced to at least 1.6s between updates
+            with TimeHelper(min_duration=1.6):
+                self.send_cpu(get_cpu_usage(test_mode))
 
             # Get device temperature using the provided key
             if temp_key:
-                th_temp = TimeHelper(min_duration=1.6)
-                self.send_temperature(get_device_temp(temp_key, test_mode))
-                del th_temp
+                with TimeHelper(min_duration=1.6):
+                    self.send_temperature(get_device_temp(temp_key, test_mode))
             elif test_mode:
                 self.send_temperature(get_device_temp("dummy_device", test_mode))
                 time.sleep(1.6)
 
     def close_device(self) -> None:
         """Closes the USB HID device."""
-        if self.device:
-            self.device.close()
-            self.device = None
+        with self.lock:
+            if self.device:
+                self.device.close()
+                self.device = None

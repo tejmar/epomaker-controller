@@ -4,6 +4,7 @@ import os
 import cv2
 import numpy as np
 
+from ..exceptions import UnsupportedImageError
 from .EpomakerCommand import EpomakerCommand, CommandStructure
 from .reports.Report import Report
 from .reports.ReportWithData import ReportWithData
@@ -118,10 +119,13 @@ class EpomakerDynaTabScreenCommand(EpomakerCommand):
         
         _, extension = os.path.splitext(image_path)
         ext = extension.lower()
-        assert ext in SUPPORTED_FORMATS, f"Unsupported format. Supported: {SUPPORTED_FORMATS}"
-        
+        if ext not in SUPPORTED_FORMATS:
+            raise UnsupportedImageError(
+                f"Unsupported format {ext!r}. Supported: {SUPPORTED_FORMATS}"
+            )
+
         frames_rgb = []
-        
+
         try:
             img = Image.open(image_path)
             try:
@@ -133,16 +137,22 @@ class EpomakerDynaTabScreenCommand(EpomakerCommand):
                         for y in range(9):
                             pixels.append(frame_img.getpixel((x, y)))
                     frames_rgb.append(pixels)
-                    
+
                     if ext == ".gif":
                         img.seek(img.tell() + 1)
                     else:
                         break
             except EOFError:
                 pass
+        except UnsupportedImageError:
+            raise
         except Exception as e:
-            print(f"Error loading image/GIF with Pillow: {e}")
-            raise e
-            
-        assert len(frames_rgb) > 0, f"No frames found in image/GIF: {image_path}"
+            raise UnsupportedImageError(
+                f"Error loading image/GIF with Pillow: {e}"
+            ) from e
+
+        if not frames_rgb:
+            raise UnsupportedImageError(
+                f"No frames found in image/GIF: {image_path}"
+            )
         return cls(frames_rgb, delay_ms)

@@ -6,8 +6,18 @@ This module defines various constants used in the EpomakerController commands.
 from enum import Enum
 from dataclasses import dataclass
 
-BUFF_LENGTH = 128 // 2  # 128 bytes / 2 bytes per int
+BUFF_LENGTH = 128 // 2  # 64-byte HID report (name counts hex chars, not bytes)
 IMAGE_DIMENSIONS = (162, 173)
+
+# Hardware pacing — load-bearing for device stability (do not reduce without testing)
+ERASE_DELAY_S = 0.25  # after init reports 0x18 (keys) / 0xa9 (screen) SRAM erase
+PACKET_DELAY_S = 0.010  # between data reports to avoid endpoint buffer overflow
+SCREEN_FLASH_WAIT_S = 12.0  # DynaTab flash write + reboot after screen upload
+
+# Known model capability flags (see configs.DEFAULT_MAIN_CONFIG["CAPABILITIES"])
+CAPABILITY_PER_KEY_RGB = "per_key_rgb"
+CAPABILITY_RT100_SCREEN = "rt100_screen"
+CAPABILITY_DYNATAB_SCREEN = "dynatab_screen"
 
 
 @dataclass(frozen=True)
@@ -42,17 +52,23 @@ class Profile:
         LIGHT_SHADOW = 0x15
 
     class Speed(Enum):
-        """Speed settings for the Epomaker keyboard."""
+        """Speed settings for the Epomaker keyboard (firmware byte 0x00-0x05)."""
 
         MIN = 0x00
-        MAX = 0x05
+        LEVEL_1 = 0x01
+        LEVEL_2 = 0x02
+        LEVEL_3 = 0x03
         MAX_SPECIAL = 0x04
         DEFAULT = 0x04
+        MAX = 0x05
 
     class Brightness(Enum):
-        """Brightness settings for the Epomaker keyboard."""
+        """Brightness settings for the Epomaker keyboard (firmware byte 0x00-0x04)."""
 
         MIN = 0x00
+        LEVEL_1 = 0x01
+        LEVEL_2 = 0x02
+        LEVEL_3 = 0x03
         MAX = 0x04
         DEFAULT = 0x04
 

@@ -1,17 +1,26 @@
 import tkinter as tk
-from tkinter import colorchooser, filedialog, messagebox
-import time
+from tkinter import colorchooser, filedialog, messagebox, ttk
 import os
+import queue
+import threading
+import time
 from PIL import Image, ImageTk
 from .fonts import F, get_ui_font
 
 from ..epomakercontroller import EpomakerController
 from ..configs.configs import load_main_config
-from ..commands.EpomakerDynaTabScreenCommand import EpomakerDynaTabScreenCommand
+from ..commands.data.constants import CAPABILITY_DYNATAB_SCREEN
 
 WIDTH = 60
 HEIGHT = 9
 CELL_SIZE = 16  # pixels per grid cell in GUI
+MAX_FRAMES = 15  # hardware-safe maximum animation frame count
+
+
+def _frame_to_row_major(frame):
+    """Convert a column-major frame list to PIL's row-major pixel order."""
+    return [frame[x * HEIGHT + y] for y in range(HEIGHT) for x in range(WIDTH)]
+
 
 class CropDialog(tk.Toplevel):
     def __init__(self, parent, image_path, callback):
@@ -145,7 +154,7 @@ class ScreenDesignerApp:
     def __init__(self, root: tk.Tk, switch_callback=None):
         self.root = root
         self.switch_callback = switch_callback
-        self.root.title("Epomaker DynaTab 75X - LED Screen Designer")
+        self.root.title("Epomaker LED Screen Designer")
         self.root.configure(bg="#1e1e1e")
         self.root.resizable(False, False)
 
@@ -168,6 +177,7 @@ class ScreenDesignerApp:
         self.delay_ms = 150
         self.is_playing = False
         self.play_job = None
+        self._uploading = False
         self.draw_mode = "draw"  # draw, erase, eyedropper
 
         # Swatch palette colors
@@ -197,7 +207,7 @@ class ScreenDesignerApp:
         # 1. Title bar
         title_lbl = tk.Label(
             self.root,
-            text="Epomaker DynaTab 75X LED Screen Designer",
+            text="Epomaker LED Screen Designer",
             font=F(16, "bold"),
             bg="#1e1e1e",
             fg="#eeeeee",
@@ -429,8 +439,9 @@ class ScreenDesignerApp:
         # Device Operations Section
         tk.Label(right_frame, text="HARDWARE", font=F(9, "bold"), bg="#2d2d2d", fg="#888888").pack(pady=(15, 5))
         
-        tk.Button(right_frame, text="Send to Screen", bg="#e94560", fg="#ffffff", font=F(10, "bold"),
-                  relief=tk.FLAT, bd=0, width=15, pady=5, command=self.upload_to_device).pack(pady=5, padx=15)
+        self.upload_btn = tk.Button(right_frame, text="Send to Screen", bg="#e94560", fg="#ffffff", font=F(10, "bold"),
+                  relief=tk.FLAT, bd=0, width=15, pady=5, command=self.upload_to_device)
+        self.upload_btn.pack(pady=5, padx=15)
 
         if self.switch_callback is not None:
             tk.Button(right_frame, text="Switch to Keys", bg="#4f46e5", fg="#ffffff", font=F(10, "bold"),
@@ -539,9 +550,8 @@ class ScreenDesignerApp:
         r = event.y // CELL_SIZE
         if 0 <= c < WIDTH and 0 <= r < HEIGHT:
             if self.draw_mode == "eyedropper" and not erase:
-                picked = self.get_pixel(c, r)
-                if picked != (0, 0, 0):
-                    self.set_selected_color(picked)
+                # Pick any pixel colour, including black (black is a valid swatch).
+                self.set_selected_color(self.get_pixel(c, r))
                 return
             
             color = (0, 0, 0) if (erase or self.draw_mode == "erase") else self.selected_color
@@ -566,8 +576,8 @@ class ScreenDesignerApp:
 
     # Frame Navigation and Operations
     def add_frame(self):
-        if len(self.frames) >= 15:
-            messagebox.showwarning("Frame Limit", "Maximum of 15 frames allowed to prevent keyboard memory issues.", parent=self.root)
+        if len(self.frames) >= MAX_FRAMES:
+            messagebox.showwarning("Frame Limit", f"Maximum of {MAX_FRAMES} frames allowed to prevent keyboard memory issues.", parent=self.root)
             return
         new_frame = [(0, 0, 0) for _ in range(WIDTH * HEIGHT)]
         self.base_frames.insert(self.current_frame_idx + 1, new_frame)
@@ -577,8 +587,8 @@ class ScreenDesignerApp:
         self.update_frame_indicators()
 
     def duplicate_frame(self):
-        if len(self.frames) >= 15:
-            messagebox.showwarning("Frame Limit", "Maximum of 15 frames allowed to prevent keyboard memory issues.", parent=self.root)
+        if len(self.frames) >= MAX_FRAMES:
+            messagebox.showwarning("Frame Limit", f"Maximum of {MAX_FRAMES} frames allowed to prevent keyboard memory issues.", parent=self.root)
             return
         current_base = self.base_frames[self.current_frame_idx]
         new_base = list(current_base)
@@ -618,6 +628,8 @@ class ScreenDesignerApp:
             self.update_frame_indicators()
 
     def shift_frame(self, direction):
+        if direction not in ("left", "right", "up", "down"):
+            raise ValueError(f"Unknown shift direction: {direction!r}")
         frame = self.base_frames[self.current_frame_idx]
         new_frame = list(frame)
         
@@ -689,7 +701,7 @@ class ScreenDesignerApp:
     def import_file(self):
         file_path = filedialog.askopenfilename(
             title="Import GIF or Image",
-            initialdir="/home/tejmar/Pictures",
+            initialdir=os.path.expanduser("~/Pictures"),
             filetypes=[("All Image Files", "*.gif *.png *.jpg *.jpeg *.bmp *.webp"),
                        ("Animated GIF", "*.gif"),
                        ("Static Images", "*.png *.jpg *.jpeg *.bmp *.webp")]
@@ -734,8 +746,8 @@ class ScreenDesignerApp:
                 pass
             
             if imported_frames:
-                if len(imported_frames) > 15:
-                    imported_frames = imported_frames[:15]
+                if len(imported_frames) > MAX_FRAMES:
+                    imported_frames = imported_frames[:MAX_FRAMES]
                     messagebox.showwarning(
                         "Animation Truncated",
                         "The imported animation had more than 15 frames and was truncated to the first 15 frames.",
@@ -759,7 +771,7 @@ class ScreenDesignerApp:
     def export_gif(self):
         file_path = filedialog.asksaveasfilename(
             title="Export Animation as GIF",
-            initialdir="/home/tejmar/Pictures",
+            initialdir=os.path.expanduser("~/Pictures"),
             defaultextension=".gif",
             filetypes=[("Animated GIF", "*.gif")]
         )
@@ -769,11 +781,7 @@ class ScreenDesignerApp:
         try:
             pil_frames = []
             for frame in self.frames:
-                # Convert column-major to row-major for PIL Image
-                row_major = []
-                for y in range(HEIGHT):
-                    for x in range(WIDTH):
-                        row_major.append(frame[x * HEIGHT + y])
+                row_major = _frame_to_row_major(frame)
                         
                 img = Image.new("RGB", (WIDTH, HEIGHT))
                 img.putdata(row_major)
@@ -794,55 +802,82 @@ class ScreenDesignerApp:
 
     # Device Upload
     def upload_to_device(self):
+        if self._uploading:
+            return  # an upload is already in progress
+        if not self.controller.has_capability(CAPABILITY_DYNATAB_SCREEN):
+            messagebox.showerror(
+                "Error",
+                "This keyboard model does not support DynaTab screen upload.\n"
+                "Set CAPABILITIES to include \"dynatab_screen\" in "
+                "~/.epomaker-controller/config.json.",
+                parent=self.root,
+            )
+            return
         if self.is_playing:
             self.toggle_preview()  # Pause preview before upload
 
-        # Show status warning
-        status_lbl = tk.Label(
-            self.root, text="Uploading... Keyboard will be unresponsive.",
-            font=F(10, "bold"), bg="#e94560", fg="#ffffff", pady=5
-        )
-        status_lbl.pack(fill=tk.X, before=self.canvas)
-        self.root.update()
+        # Snapshot frames on the UI thread so the worker gets a stable copy.
+        frames_snapshot = [list(frame) for frame in self.frames]
+        delay_ms = self.delay_ms
 
-        try:
-            if self.controller.open_device():
-                temp_gif = "/tmp/epomaker_temp_upload.gif"
-                
-                # Save frames to temporary GIF
-                pil_frames = []
-                for frame in self.frames:
-                    row_major = []
-                    for y in range(HEIGHT):
-                        for x in range(WIDTH):
-                            row_major.append(frame[x * HEIGHT + y])
-                    img = Image.new("RGB", (WIDTH, HEIGHT))
-                    img.putdata(row_major)
-                    pil_frames.append(img)
-                
-                pil_frames[0].save(
-                    temp_gif,
-                    save_all=True,
-                    append_images=pil_frames[1:],
-                    duration=self.delay_ms,
-                    loop=0
-                )
-                
-                self.controller.send_image(temp_gif, delay_ms=self.delay_ms)
+        # Enter "uploading" state: the slow device write runs in a worker thread
+        # so the window stays responsive (it no longer freezes for ~12s).
+        self._uploading = True
+        self.upload_btn.config(state=tk.DISABLED)
+        status_frame = tk.Frame(self.root, bg="#e94560")
+        status_frame.pack(fill=tk.X, before=self.canvas)
+        tk.Label(status_frame, text="Uploading — keyboard will reboot. Do not unplug.",
+                 font=F(10, "bold"), bg="#e94560", fg="#ffffff", pady=6).pack(side=tk.LEFT, padx=10)
+        progress = ttk.Progressbar(status_frame, mode="indeterminate", length=220)
+        progress.pack(side=tk.LEFT, pady=6)
+        progress.start(12)
+
+        def _finish(error):
+            try:
+                progress.stop()
+                status_frame.destroy()
+            except tk.TclError:
+                pass  # window was closed while uploading
+            self._uploading = False
+            try:
+                self.upload_btn.config(state=tk.NORMAL)
+                if error:
+                    messagebox.showerror("Error", f"Upload failed: {error}", parent=self.root)
+                else:
+                    messagebox.showinfo("Success", "Animation uploaded successfully!", parent=self.root)
+            except tk.TclError:
+                pass
+
+        def _worker():
+            error = None
+            try:
+                # Close the main handle so iface 2/0 opens do not conflict.
                 self.controller.close_device()
-                
-                # Cleanup temp file
-                if os.path.exists(temp_gif):
-                    os.remove(temp_gif)
-                    
-                messagebox.showinfo("Success", "Animation uploaded successfully!", parent=self.root)
-            else:
-                messagebox.showerror("Error", "Could not connect to the Epomaker keyboard.", parent=self.root)
-        except Exception as e:
-            messagebox.showerror("Error", f"Upload failed: {e}", parent=self.root)
-        finally:
-            status_lbl.destroy()
-            self.controller.close_device()
+                self.controller.send_dynatab_frames(
+                    frames_snapshot, delay_ms=delay_ms
+                )
+            except Exception as e:
+                error = str(e)
+            finally:
+                try:
+                    self.controller.close_device()
+                except Exception:
+                    pass
+            # Signal completion via a thread-safe queue; the main thread polls it.
+            # (Never call into Tk from this worker thread — it is not thread-safe.)
+            self._upload_queue.put(error)
+
+        def _poll():
+            try:
+                error = self._upload_queue.get_nowait()
+            except queue.Empty:
+                self.root.after(100, _poll)
+                return
+            _finish(error)
+
+        self._upload_queue = queue.Queue()
+        threading.Thread(target=_worker, daemon=True).start()
+        self.root.after(100, _poll)
 
 def main():
     root = tk.Tk()

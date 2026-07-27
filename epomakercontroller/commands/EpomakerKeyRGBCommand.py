@@ -135,25 +135,3 @@ class EpomakerKeyRGBCommand(EpomakerCommand):
             list[ReportWithData]: The data reports.
         """
         return [r for r in self.reports if isinstance(r, ReportWithData)]
-
-    def report_data_contain_index(self, report: ReportWithData, index: int) -> bool:
-        """Checks if the provided report contains the specified index.
-
-        Uses BUFF_LENGTH - self.report_data_header_length so this function
-        can be used before the data is set.
-
-        Args:
-            report (ReportWithData): The report to check.
-            index (int): The index to check.
-
-        Returns:
-            bool: True if the report contains the index, False otherwise.
-        """
-        report_index_count = 0
-        data_buffer_length = BUFF_LENGTH - self.report_data_header_length
-        for report in self.get_data_reports():
-            report_data = report[self.report_data_header_length :]
-            if report_index_count <= index < (report_index_count + data_buffer_length):
-                return True
-            report_index_count += len(report_data)
-        return False

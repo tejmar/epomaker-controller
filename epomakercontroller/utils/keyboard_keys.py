@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Iterator
 from ..configs.configs import Config
+from ..exceptions import ConfigError
 
 
 @dataclass(frozen=True)
@@ -21,7 +22,8 @@ class KeyboardKeys:
     """This class holds each keyboard key index along with it's name and display string"""
 
     def __init__(self, config: Config) -> None:
-        assert config.data is not None, "ERROR: Config has no data"
+        if config.data is None:
+            raise ConfigError("Config has no data")
 
         self.all_keys = [KeyboardKey(**key) for key in config.data]
         self.name_to_key_dict = {}

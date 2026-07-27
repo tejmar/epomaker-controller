@@ -3,6 +3,7 @@
 import dataclasses
 from typing import Iterator
 from .reports.Report import Report, ReportCollection
+from ..exceptions import ProtocolError
 import numpy as np
 import numpy.typing as npt
 
@@ -72,13 +73,11 @@ class EpomakerCommand:
         self._insert_report(initial_report)
 
     def _insert_report(self, report: Report) -> None:
-        assert report.index < len(self.structure), (
-            f"Report index {report.index} exceeds the number of reports "
-            f"{len(self.structure)}."
-        )
-        # assert report.index not in [r.index for r in self.reports], (
-        #     f"Report index {report.index} already exists."
-        #     )
+        if report.index >= len(self.structure):
+            raise ProtocolError(
+                f"Report index {report.index} exceeds the number of reports "
+                f"{len(self.structure)}."
+            )
         self.reports.append(report)
 
     @staticmethod
@@ -118,7 +117,8 @@ class EpomakerCommand:
             Report: The report.
         """
         report = next((r for r in self.reports if r.index == key), None)
-        assert report is not None, f"Report {key} not found."
+        if report is None:
+            raise ProtocolError(f"Report {key} not found.")
         return report
 
     def iter_report_bytes(self) -> Iterator[bytes]:
