@@ -7,7 +7,7 @@
 
 > **No Windows driver required.** A complete Linux controller for the Epomaker DynaTab 75X — paint individual key colors, design and upload custom dot-matrix animations, sync your system clock, and more.
 
-![Epomaker DynaTab 75X with custom animation loaded](assets/images/keyboard_photo.jpg)
+![Epomaker DynaTab 75X with custom animation running](assets/images/demo.gif)
 
 ---
 
