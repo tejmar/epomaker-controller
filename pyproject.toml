@@ -29,6 +29,11 @@ dependencies = [
 ]
 requires-python = ">=3.10"
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
 [project.entry-points]
 console_scripts = { epomakercontroller = "epomakercontroller.__main__:cli" }
 
@@ -38,3 +43,7 @@ include = ["epomakercontroller*"]
 
 [tool.setuptools.package-data]
 epomakercontroller = ["configs/**/*", "py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

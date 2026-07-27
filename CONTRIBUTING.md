@@ -20,8 +20,18 @@ git clone https://github.com/YOUR_GITHUB_USERNAME/epomaker-controller.git
 cd epomaker-controller
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e ".[dev]"
 ```
+
+### Running tests
+
+Unit tests do not need a keyboard attached (controller paths use `dry_run` / pure command builders):
+
+```bash
+pytest
+```
+
+CI runs the same suite on Python 3.10–3.12 via `.github/workflows/ci.yml`.
 
 ### Code Structure
 
