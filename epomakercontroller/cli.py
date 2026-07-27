@@ -1,16 +1,70 @@
 # src/epomakercontroller/cli.py
 """Simple CLI for the EpomakerController package."""
 
+from __future__ import annotations
+
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+
 import click
 import tkinter as tk
 
 from .commands.data.constants import Profile
 from .configs.configs import load_main_config
 from .epomakercontroller import EpomakerController
+from .exceptions import DeviceNotOpenError, EpomakerError
 from .utils.sensors import print_temp_devices
 from .utils.keyboard_gui import RGBKeyboardGUI
 
 CONFIG_MAIN = load_main_config()
+
+
+@contextmanager
+def open_controller(
+    *,
+    dry_run: bool = False,
+    only_info: bool = False,
+    install_signal_handlers: bool = False,
+) -> Iterator[EpomakerController]:
+    """Open a controller and always close it on exit.
+
+    Yields an open :class:`EpomakerController`. On failure to open, raises
+    :class:`DeviceNotOpenError` (or other controller errors).
+    """
+    controller = EpomakerController(
+        CONFIG_MAIN,
+        dry_run=dry_run,
+        install_signal_handlers=install_signal_handlers,
+    )
+    with controller:
+        if not controller.open_device(only_info=only_info):
+            raise DeviceNotOpenError("Failed to open device.")
+        yield controller
+
+
+def _run_with_device(
+    action: Callable[[EpomakerController], None],
+    *,
+    success: str | None = None,
+    error_prefix: str = "Command failed",
+    only_info: bool = False,
+    install_signal_handlers: bool = False,
+    dry_run: bool = False,
+) -> None:
+    """Run *action* against an opened device; print success or error."""
+    try:
+        with open_controller(
+            dry_run=dry_run,
+            only_info=only_info,
+            install_signal_handlers=install_signal_handlers,
+        ) as controller:
+            action(controller)
+            if success:
+                click.echo(success)
+    except (EpomakerError, OSError, ValueError) as e:
+        click.echo(f"{error_prefix}: {e}")
+    except Exception as e:  # unexpected — still report cleanly for CLI users
+        click.echo(f"{error_prefix}: {e}")
 
 
 @click.group()
@@ -21,28 +75,27 @@ def cli() -> None:
 
 @cli.command()
 @click.argument("image_path", type=click.Path(exists=True))
-@click.option("--delay", default=100, type=int, help="Frame delay in milliseconds (for animations/GIFs).")
+@click.option(
+    "--delay",
+    default=100,
+    type=int,
+    help="Frame delay in milliseconds (for animations/GIFs).",
+)
 def upload_image(image_path: str, delay: int) -> None:
-    """Upload an image or GIF to the Epomaker device.
+    """Upload an image or GIF to the Epomaker device."""
 
-    Args:
-        image_path (str): The path to the image file to upload.
-        delay (int): Frame delay in milliseconds for animations.
-    """
-    try:
-        controller = EpomakerController(CONFIG_MAIN)
-        if controller.open_device():
-            print(
-                "Uploading, you should see the status on the keyboard screen.\n"
-                "The keyboard will be unresponsive during this process."
-            )
-            controller.send_image(image_path, delay_ms=delay)
-            click.echo("Image uploaded successfully.")
-    except Exception as e:
-        click.echo(f"Failed to upload image: {e}")
-    finally:
-        if "controller" in locals():
-            controller.close_device()
+    def _action(controller: EpomakerController) -> None:
+        print(
+            "Uploading, you should see the status on the keyboard screen.\n"
+            "The keyboard will be unresponsive during this process."
+        )
+        controller.send_image(image_path, delay_ms=delay)
+
+    _run_with_device(
+        _action,
+        success="Image uploaded successfully.",
+        error_prefix="Failed to upload image",
+    )
 
 
 @cli.command()
@@ -50,133 +103,91 @@ def upload_image(image_path: str, delay: int) -> None:
 @click.argument("g", type=int)
 @click.argument("b", type=int)
 def set_rgb_all_keys(r: int, g: int, b: int) -> None:
-    """Set RGB colour for all keys.
-
-    Args:
-        r (int): The red value (0-255).
-        g (int): The green value (0-255).
-        b (int): The blue value (0-255).
-    """
-    try:
-        controller = EpomakerController(CONFIG_MAIN)
-        if controller.open_device():
-            controller.set_rgb_all_keys(r, g, b)
-            click.echo(f"All keys set to RGB({r}, {g}, {b}) successfully.")
-    except Exception as e:
-        click.echo(f"Failed to set RGB for all keys: {e}")
-    finally:
-        if "controller" in locals():
-            controller.close_device()
+    """Set RGB colour for all keys."""
+    _run_with_device(
+        lambda c: c.set_rgb_all_keys(r, g, b),
+        success=f"All keys set to RGB({r}, {g}, {b}) successfully.",
+        error_prefix="Failed to set RGB for all keys",
+    )
 
 
 @cli.command()
 @click.argument("r", type=int)
 @click.argument("g", type=int)
 @click.argument("b", type=int)
-@click.option("--mode", default="ALWAYS_ON", type=click.Choice([m.name for m in Profile.Mode]))
+@click.option(
+    "--mode",
+    default="ALWAYS_ON",
+    type=click.Choice([m.name for m in Profile.Mode]),
+)
 def set_profile(r: int, g: int, b: int, mode: str) -> None:
-    """Set the permanent keyboard lighting profile and color.
+    """Set the permanent keyboard lighting profile and color."""
 
-    Args:
-        r (int): Red value (0-255).
-        g (int): Green value (0-255).
-        b (int): Blue value (0-255).
-        mode (str): Backlight profile mode name.
-    """
-    try:
-        controller = EpomakerController(CONFIG_MAIN)
-        if controller.open_device():
-            profile_mode = Profile.Mode[mode]
-            profile = Profile(
-                mode=profile_mode,
-                speed=Profile.Speed.DEFAULT,
-                brightness=Profile.Brightness.DEFAULT,
-                dazzle=Profile.Dazzle.OFF,
-                option=Profile.Option.OFF,
-                rgb=(r, g, b),
-            )
-            controller.set_profile(profile)
-            click.echo(f"Profile set to {mode} with RGB({r}, {g}, {b}) successfully.")
-    except Exception as e:
-        click.echo(f"Failed to set profile: {e}")
-    finally:
-        if "controller" in locals():
-            controller.close_device()
+    def _action(controller: EpomakerController) -> None:
+        profile = Profile(
+            mode=Profile.Mode[mode],
+            speed=Profile.Speed.DEFAULT,
+            brightness=Profile.Brightness.DEFAULT,
+            dazzle=Profile.Dazzle.OFF,
+            option=Profile.Option.OFF,
+            rgb=(r, g, b),
+        )
+        controller.set_profile(profile)
+
+    _run_with_device(
+        _action,
+        success=f"Profile set to {mode} with RGB({r}, {g}, {b}) successfully.",
+        error_prefix="Failed to set profile",
+    )
 
 
 @cli.command()
 def cycle_light_modes() -> None:
     """Cycle through the light modes."""
-    try:
-        controller = EpomakerController(CONFIG_MAIN)
-        if not controller.open_device():
-            click.echo("Failed to open device.")
-            return
 
-        print(f"Cycling through {len(Profile.Mode)} modes, waiting 5 seconds on each")
+    def _action(controller: EpomakerController) -> None:
+        print(
+            f"Cycling through {len(Profile.Mode)} modes, waiting 5 seconds on each"
+        )
         controller.cycle_light_modes()
 
-        click.echo("Cycled through all light modes successfully.")
-    except Exception as e:
-        click.echo(f"Failed to cycle light modes: {e}")
-    finally:
-        if "controller" in locals():
-            controller.close_device()
+    _run_with_device(
+        _action,
+        success="Cycled through all light modes successfully.",
+        error_prefix="Failed to cycle light modes",
+    )
 
 
 @cli.command()
 def send_time() -> None:
     """Send the current time to the Epomaker device."""
-    try:
-        controller = EpomakerController(CONFIG_MAIN)
-        if controller.open_device():
-            controller.send_time()
-            click.echo("Time sent successfully.")
-    except Exception as e:
-        click.echo(f"Failed to send time: {e}")
-    finally:
-        if "controller" in locals():
-            controller.close_device()
+    _run_with_device(
+        lambda c: c.send_time(),
+        success="Time sent successfully.",
+        error_prefix="Failed to send time",
+    )
 
 
 @cli.command()
 @click.argument("temperature", type=int)
 def send_temperature(temperature: int) -> None:
-    """Send temperature to the Epomaker screen.
-
-    Args:
-        temperature (int): The temperature value in C (0-100).
-    """
-    try:
-        controller = EpomakerController(CONFIG_MAIN)
-        if controller.open_device():
-            controller.send_temperature(temperature)
-            click.echo("Temperature sent successfully.")
-    except Exception as e:
-        click.echo(f"Failed to send temperature: {e}")
-    finally:
-        if "controller" in locals():
-            controller.close_device()
+    """Send temperature to the Epomaker screen."""
+    _run_with_device(
+        lambda c: c.send_temperature(temperature),
+        success="Temperature sent successfully.",
+        error_prefix="Failed to send temperature",
+    )
 
 
 @cli.command()
 @click.argument("cpu", type=int)
 def send_cpu(cpu: int) -> None:
-    """Send CPU usage percentage to the Epomaker screen.
-
-    Args:
-        cpu (int): The CPU usage percentage (0-100).
-    """
-    try:
-        controller = EpomakerController(CONFIG_MAIN)
-        if controller.open_device():
-            controller.send_cpu(cpu)
-            click.echo("CPU usage sent successfully.")
-    except Exception as e:
-        click.echo(f"Failed to send CPU usage: {e}")
-    finally:
-        if "controller" in locals():
-            controller.close_device()
+    """Send CPU usage percentage to the Epomaker screen."""
+    _run_with_device(
+        lambda c: c.send_cpu(cpu),
+        success="CPU usage sent successfully.",
+        error_prefix="Failed to send CPU usage",
+    )
 
 
 @cli.command()
@@ -188,26 +199,14 @@ def send_cpu(cpu: int) -> None:
 )
 @click.argument("temp_key", type=str, required=False)
 def start_daemon(temp_key: str | None, test_mode: bool) -> None:
-    """Start a daemon to update the CPU usage and optionally a temperature.
-
-    Args:
-        temp_key (str): A label corresponding to the device to monitor.
-        test_mode (bool): Send random ints instead of real values.
-    """
+    """Start a daemon to update the CPU usage and optionally a temperature."""
     try:
-        controller = EpomakerController(CONFIG_MAIN)
-        if not controller.open_device():
-            click.echo("Failed to open device.")
-            return
-        controller.start_daemon(temp_key, test_mode)
-
+        with open_controller(install_signal_handlers=True) as controller:
+            controller.start_daemon(temp_key, test_mode)
     except KeyboardInterrupt:
         click.echo("Daemon interrupted by user.")
     except Exception as e:
         click.echo(f"Error in start-daemon: {e}")
-    finally:
-        if "controller" in locals():
-            controller.close_device()
 
 
 @cli.command()
@@ -230,128 +229,123 @@ def list_temp_devices() -> None:
     help="Generate a udev rule for the connected keyboard.",
 )
 def dev(print_info: bool, generate_udev: bool) -> None:
-    """Various dev tools.
+    """Various dev tools."""
+    if not print_info and not generate_udev:
+        click.echo("No dev tool specified.")
+        return
 
-    Args:
-        print_info (bool): Print information about the connected keyboard.
-        generate_udev (bool): Generate a udev rule for the connected keyboard.
-    """
     try:
-        if print_info:
-            click.echo("Printing all available information about the connected keyboard.")
-            controller = EpomakerController(CONFIG_MAIN)
-            if not controller.open_device(only_info=True):
-                click.echo("Failed to open device.")
-                return
-        elif generate_udev:
-            click.echo("Generating udev rule for the connected keyboard.")
-            # Init controller to get the PID
-            controller = EpomakerController(CONFIG_MAIN)
-            if not controller.open_device(only_info=True):
-                click.echo("Failed to open device.")
-                return
-            controller.generate_udev_rule()
-        else:
-            click.echo("No dev tool specified.")
+        with open_controller(only_info=True) as controller:
+            if print_info:
+                click.echo(
+                    "Printing all available information about the connected keyboard."
+                )
+                # open_device(only_info=True) already printed via controller path
+            if generate_udev:
+                click.echo("Generating udev rule for the connected keyboard.")
+                controller.generate_udev_rule()
     except Exception as e:
         click.echo(f"Dev tool failed: {e}")
-    finally:
-        if "controller" in locals():
-            controller.close_device()
 
 
-def run_set_keys_flow(saved_colours: dict = None) -> tuple[str | None, dict]:
+def run_set_keys_flow(saved_colours: dict | None = None) -> tuple[str | None, dict]:
     import threading
     import time
 
     controller = EpomakerController(CONFIG_MAIN)
-    if not controller.open_device():
-        print("Failed to open device.")
-        return None, saved_colours or {}
+    with controller:
+        if not controller.open_device():
+            print("Failed to open device.")
+            return None, saved_colours or {}
 
-    root = tk.Tk()
-    next_action = None
-    running = True
+        root = tk.Tk()
+        next_action = None
+        running = True
 
-    def on_switch(window):
-        nonlocal next_action, running
-        next_action = "screen"
-        running = False
-        if thread.is_alive():
-            thread.join(timeout=0.5)
-        controller.close_device()
-        window.destroy()
+        def on_switch(window: tk.Tk) -> None:
+            nonlocal next_action, running
+            next_action = "screen"
+            running = False
+            if thread.is_alive():
+                thread.join(timeout=0.5)
+            controller.close_device()
+            window.destroy()
 
-    gui = RGBKeyboardGUI(
-        root, lambda x: None, controller.config_layout, controller.config_keymap,
-        switch_callback=on_switch, controller=controller, initial_colours=saved_colours
-    )
+        gui = RGBKeyboardGUI(
+            root,
+            lambda x: None,
+            controller.config_layout,
+            controller.config_keymap,
+            switch_callback=on_switch,
+            controller=controller,
+            initial_colours=saved_colours,
+        )
 
-    def rgb_send_loop() -> None:
-        last_colors = None
+        def rgb_send_loop() -> None:
+            last_colors = None
 
-        while running:
-            if not running or controller.device is None:
-                break
+            while running:
+                if not running or controller.device is None:
+                    break
 
-            # Keep keyboard lighting presets active unless the user is actively customizing
-            if not gui.custom_mode_active:
-                last_colors = None  # Reset so it re-applies if custom mode is reactivated
-                time.sleep(0.1)
-                continue
+                # Keep keyboard lighting presets active unless customizing
+                if not gui.custom_mode_active:
+                    last_colors = None
+                    time.sleep(0.1)
+                    continue
 
-            try:
-                # Snapshot the live frame under its lock so the GUI thread can
-                # keep mutating it while we build + send without a torn update.
-                snap_frame = gui.snapshot_frame()
-                current_colors = tuple(snap_frame.key_map.key_map.values())
-            except Exception:
-                current_colors = None
-                snap_frame = None
-
-            if not running or controller.device is None:
-                break
-
-            if current_colors is not None and current_colors != last_colors:
                 try:
-                    # Paced multi-packet send (erase delay + 10 ms packet pace)
-                    controller.send_keys([snap_frame])
-                except Exception as e:
-                    gui.report_status(f"Device: error - {e}")
-                else:
-                    gui.report_status("Device: connected")
-                last_colors = current_colors
+                    snap_frame = gui.snapshot_frame()
+                    current_colors = tuple(snap_frame.key_map.key_map.values())
+                except Exception:
+                    current_colors = None
+                    snap_frame = None
 
-            time.sleep(0.1)
+                if not running or controller.device is None:
+                    break
 
-    thread = threading.Thread(target=rgb_send_loop, daemon=True)
-    thread.start()
+                if current_colors is not None and current_colors != last_colors:
+                    try:
+                        controller.send_keys([snap_frame])
+                    except Exception as e:
+                        gui.report_status(f"Device: error - {e}")
+                    else:
+                        gui.report_status("Device: connected")
+                    last_colors = current_colors
 
-    def on_close() -> None:
-        nonlocal running
-        running = False
-        if thread.is_alive():
-            thread.join(timeout=0.5)
-        controller.close_device()
-        root.destroy()
+                time.sleep(0.1)
 
-    root.protocol("WM_DELETE_WINDOW", on_close)
-    root.mainloop()
+        thread = threading.Thread(target=rgb_send_loop, daemon=True)
+        thread.start()
 
-    current_colours_dict = {k.name: v for k, v in gui.key_colours.items() if v is not None}
-    return next_action, current_colours_dict
+        def on_close() -> None:
+            nonlocal running
+            running = False
+            if thread.is_alive():
+                thread.join(timeout=0.5)
+            controller.close_device()
+            root.destroy()
+
+        root.protocol("WM_DELETE_WINDOW", on_close)
+        root.mainloop()
+
+        current_colours_dict = {
+            k.name: v for k, v in gui.key_colours.items() if v is not None
+        }
+        return next_action, current_colours_dict
 
 
-def run_screen_designer_flow(saved_state: dict = None) -> tuple[str | None, dict]:
+def run_screen_designer_flow(
+    saved_state: dict | None = None,
+) -> tuple[str | None, dict]:
     from .utils import screen_designer_gui
+
     root = tk.Tk()
     next_action = None
 
-    def on_switch(window):
+    def on_switch(window: tk.Tk) -> None:
         nonlocal next_action
         next_action = "keys"
-        # Match on_close: stop preview playback and release the device so the
-        # keys flow can reopen it cleanly.
         if app.is_playing:
             app.is_playing = False
         app.controller.close_device()
@@ -368,7 +362,7 @@ def run_screen_designer_flow(saved_state: dict = None) -> tuple[str | None, dict
         app.update_canvas()
         app.update_frame_indicators()
 
-    def on_close():
+    def on_close() -> None:
         if app.is_playing:
             app.is_playing = False
         app.controller.close_device()
@@ -389,16 +383,18 @@ def run_screen_designer_flow(saved_state: dict = None) -> tuple[str | None, dict
 
 
 def start_gui_flow(initial_mode: str) -> None:
-    current_mode = initial_mode
-    saved_colours = {}
-    saved_screen_state = {}
+    current_mode: str | None = initial_mode
+    saved_colours: dict = {}
+    saved_screen_state: dict = {}
 
     while current_mode is not None:
         if current_mode == "keys":
             next_mode, saved_colours = run_set_keys_flow(saved_colours)
             current_mode = next_mode
         elif current_mode == "screen":
-            next_mode, saved_screen_state = run_screen_designer_flow(saved_screen_state)
+            next_mode, saved_screen_state = run_screen_designer_flow(
+                saved_screen_state
+            )
             current_mode = next_mode
         else:
             current_mode = None
@@ -414,16 +410,11 @@ def set_keys() -> None:
 @click.argument("key_index", type=int)
 @click.argument("key_combo", type=int)
 def remap_keys(key_index: int, key_combo: int) -> None:
-    """Remap key functionality using a KeyboardKey index (from) and a USB HID index (to)"""
-    try:
-        controller = EpomakerController(CONFIG_MAIN)
-        if controller.open_device():
-            controller.remap_keys(key_index, key_combo)
-    except Exception as e:
-        click.echo(f"Failed to remap keys: {e}")
-    finally:
-        if "controller" in locals():
-            controller.close_device()
+    """Remap key functionality using a KeyboardKey index (from) and a USB HID index (to)."""
+    _run_with_device(
+        lambda c: c.remap_keys(key_index, key_combo),
+        error_prefix="Failed to remap keys",
+    )
 
 
 @cli.command()
@@ -431,17 +422,21 @@ def remap_keys(key_index: int, key_combo: int) -> None:
 def show_keymap(filter: str | None) -> None:
     from .exceptions import ConfigError
 
-    controller = EpomakerController(CONFIG_MAIN, dry_run=True)
-    data = controller.config_keymap.data
-    if data is None:
-        raise ConfigError("Config has no data")
+    with open_controller(dry_run=True) as controller:
+        data = controller.config_keymap.data
+        if data is None:
+            raise ConfigError("Config has no data")
 
-    to_show = list(data)
-    if filter:
-        to_show = [item for item in data if filter.lower() in item["name"].lower()]
+        to_show = list(data)
+        if filter:
+            to_show = [
+                item
+                for item in data
+                if filter.lower() in item["name"].lower()
+            ]
 
-    for item in to_show:
-        print(f"{item['name']}: {item['value']}")
+        for item in to_show:
+            print(f"{item['name']}: {item['value']}")
 
 
 @cli.command()

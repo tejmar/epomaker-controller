@@ -9,11 +9,11 @@ from datetime import datetime
 from json import dumps
 import os
 import time
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 import hid  # type: ignore[import-not-found]
 import signal
 import subprocess
-from types import FrameType
+from types import FrameType, TracebackType
 import re
 import threading
 
@@ -71,12 +71,17 @@ class EpomakerController:
         self,
         config_main: Config,
         dry_run: bool = False,
+        *,
+        install_signal_handlers: bool = False,
     ) -> None:
         """Initializes the EpomakerController object.
 
         Args:
             config_main (Config): Main configuration (VID/PID, layout, capabilities).
             dry_run (bool): Whether to run in dry run mode (default: False).
+            install_signal_handlers: Install process-wide SIGINT/SIGTERM handlers
+                that close the device. Prefer True only for long-running CLI tools
+                (e.g. the daemon); leave False when embedding as a library.
         """
 
         self.config_layout = Config(
@@ -108,8 +113,8 @@ class EpomakerController:
                it back in!"""
         )
 
-        # Set up signal handling
-        self._setup_signal_handling()
+        if install_signal_handlers:
+            self._setup_signal_handling()
 
     def has_capability(self, name: str) -> bool:
         """Return True if this model advertises the given capability flag."""
@@ -129,6 +134,19 @@ class EpomakerController:
         """
         self.close_device()
         raise KeyboardInterrupt
+
+    def __enter__(self) -> "EpomakerController":
+        """Context-manager entry; device must still be opened via ``open_device``."""
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        """Always release the HID device when leaving a ``with`` block."""
+        self.close_device()
 
     def __del__(self) -> None:
         """Destructor to ensure the device is closed."""

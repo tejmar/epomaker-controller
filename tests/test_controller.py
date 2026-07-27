@@ -78,3 +78,40 @@ def test_send_image_rt100_bad_extension(main_config, tmp_path) -> None:
     bad.write_bytes(b"nope")
     with pytest.raises(UnsupportedImageError):
         ctl.send_image(str(bad))
+
+
+def test_context_manager_closes_device(main_config) -> None:
+    ctl = EpomakerController(main_config, dry_run=True)
+    with ctl:
+        assert ctl.open_device()
+        # dry_run leaves a placeholder hid.device object
+        assert ctl.device is not None
+    # __exit__ always calls close_device
+    assert ctl.device is None
+
+
+def test_context_manager_closes_on_exception(main_config) -> None:
+    ctl = EpomakerController(main_config, dry_run=True)
+    with pytest.raises(RuntimeError, match="boom"):
+        with ctl:
+            assert ctl.open_device()
+            raise RuntimeError("boom")
+    assert ctl.device is None
+
+
+def test_signal_handlers_opt_in(main_config, monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    def fake_signal(sig, handler):
+        calls.append((sig, handler))
+
+    monkeypatch.setattr(
+        "epomakercontroller.epomakercontroller.signal.signal", fake_signal
+    )
+    EpomakerController(main_config, dry_run=True)
+    assert calls == []
+
+    EpomakerController(
+        main_config, dry_run=True, install_signal_handlers=True
+    )
+    assert len(calls) == 2  # SIGINT + SIGTERM
