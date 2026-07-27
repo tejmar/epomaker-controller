@@ -450,5 +450,72 @@ def screen_designer() -> None:
     start_gui_flow("screen")
 
 
+@cli.group()
+def models() -> None:
+    """List and select packaged keyboard models."""
+    pass
+
+
+@models.command("list")
+def models_list() -> None:
+    """List built-in keyboard models (* marks the current config match)."""
+    from .configs.models import format_models_table, list_models, match_model
+
+    config = load_main_config()
+    current = match_model(config)
+    click.echo(format_models_table(list_models(), current))
+    if current is None:
+        click.echo(
+            "Current config does not match a built-in model "
+            f"(layout={config['CONF_LAYOUT_PATH']!r}, "
+            f"keymap={config['CONF_KEYMAP_PATH']!r})."
+        )
+
+
+@models.command("show")
+def models_show() -> None:
+    """Show the model currently selected in the main config."""
+    from .configs.models import match_model
+
+    config = load_main_config()
+    current = match_model(config)
+    click.echo(f"Layout:       {config['CONF_LAYOUT_PATH']}")
+    click.echo(f"Keymap:       {config['CONF_KEYMAP_PATH']}")
+    click.echo(f"Capabilities: {', '.join(config['CAPABILITIES'])}")
+    if current:
+        click.echo(f"Model:        {current.id} ({current.name})")
+        if current.description:
+            click.echo(f"Description:  {current.description}")
+    else:
+        click.echo("Model:        (custom — not a built-in registry entry)")
+
+
+@models.command("set")
+@click.argument("model_id")
+def models_set(model_id: str) -> None:
+    """Select a built-in model and write it to the main config.
+
+    MODEL_ID is one of: rt100, dynatab75x, ep64, gamakay-tk68-he
+    (see ``epomakercontroller models list``).
+    """
+    global CONFIG_MAIN
+    from .configs.models import apply_model, get_model
+    from .exceptions import ConfigError
+
+    try:
+        model = get_model(model_id)
+        config = load_main_config()
+        CONFIG_MAIN = apply_model(config, model.id, save=True)
+    except ConfigError as e:
+        click.echo(f"Failed to set model: {e}", err=True)
+        raise SystemExit(1) from e
+
+    click.echo(f"Model set to {model.id} ({model.name})")
+    click.echo(f"  layout:       {model.layout}")
+    click.echo(f"  keymap:       {model.keymap}")
+    click.echo(f"  capabilities: {', '.join(model.capabilities)}")
+    click.echo("Restart any open GUIs to pick up the new model.")
+
+
 if __name__ == "__main__":
     cli()
