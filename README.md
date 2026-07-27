@@ -41,12 +41,10 @@
 ## Screenshots
 
 ### 🎨 LED Screen Designer
-<!-- Replace with a real screenshot: run `epomakercontroller screen-designer`, take a screenshot, and save it to assets/images/screen_designer.jpg -->
-![LED Screen Designer GUI](assets/images/screen_designer.jpg)
+![LED Screen Designer GUI](assets/images/screen_designer.png)
 
 ### ⌨️ Key Backlight Customizer
-<!-- Replace with a real screenshot: run `epomakercontroller set-keys`, take a screenshot, and save it to assets/images/key_backlight.jpg -->
-![Key Backlight Customizer GUI](assets/images/key_backlight.jpg)
+![Key Backlight Customizer GUI](assets/images/key_backlight.png)
 
 ---
 
