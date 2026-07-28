@@ -43,6 +43,8 @@
 | ⌨️ Key Backlight Customizer | Paint per-key RGB colors in real time |
 | 🖼️ GIF/Image Import | Import animated GIFs or images with an interactive crop tool |
 | 🎚️ Image Adjustments | Brightness, contrast, and saturation (non-destructive) |
+| ⭐ Screen presets | Eight local thumbnail slots (factory art + your saves) |
+| 🔤 Text / git on screen | Free text, pick folder, or recent paths → 60×9 bitmap |
 | 💾 Layout Profiles | Save and reload custom color layouts as JSON |
 | 🎭 Preset Effects | Built-in backlight modes (Wave, Breathe, Twinkle, etc.) |
 | 🕒 Time Sync | Sync the keyboard clock to system time |
@@ -54,10 +56,10 @@
 ## Screenshots
 
 ### LED Screen Designer
-![LED Screen Designer GUI](assets/images/screen_designer.png)
+![LED Screen Designer GUI](assets/images/screen_designer2.png)
 
 ### Key Backlight Customizer
-![Key Backlight Customizer GUI](assets/images/key_backlight.png)
+![Key Backlight Customizer GUI](assets/images/key_backlight2.png)
 
 ---
 
@@ -68,6 +70,8 @@ Pixel editor for the DynaTab 75X 60×9 dot-matrix screen:
 
 * **Interactive grid** — left-click draw, right-click erase, eyedropper to pick colors
 * **Animation** — add, duplicate, delete, and navigate frames; Play/Pause preview; max **15** frames (hardware limit)
+* **Preset slots** — eight thumbnail favorites under the canvas; click to load, right-click to save/clear/restore factory
+* **Text / git…** — type anything, pick a project folder (git root name), or reuse a recent entry
 * **GIF import/export** — import `.gif` or static images with crop/zoom; export a scaled shareable GIF
 * **Adjustments** — brightness, contrast, saturation across all frames (base pixels kept separately)
 * **Shift pad** — nudge the active frame with wrap-around for scroll animations
@@ -76,7 +80,7 @@ Pixel editor for the DynaTab 75X 60×9 dot-matrix screen:
 
 * RGB sliders and preset swatches on-screen
 * Paint-brush mode for instant key coloring
-* Multi-select keys, then apply a color
+* Multi-select keys (accent ring), then apply a color
 * Save/load layout JSON
 * Built-in profile effects (speed, brightness, dazzle)
 
